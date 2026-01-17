@@ -81,6 +81,75 @@ This will create an endpoint on `http://localhost:8081/healthz` with the followi
 }
 ```
 
+## ASP.NET Core Route Integration
+
+If you already have a web application and want the health check to live inside your existing HTTP pipeline
+(so it can use your app's authn/authz), register the health check with DI and map it as an endpoint route.
+Below is an example of adding `/healthcheck` to an existing site that already uses authentication and authorization.
+
+### Program.cs (minimal hosting)
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddAuthentication("Bearer")
+    .AddJwtBearer("Bearer", options =>
+    {
+        options.Authority = "https://identity.example.com";
+        options.Audience = "my-api";
+    });
+
+builder.Services.AddAuthorization();
+builder.Services.AddTinyHealthCheck<BasicHealthCheck>();
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapTinyHealthCheck<BasicHealthCheck>(config =>
+{
+    config.UrlPath = "/healthcheck";
+    return config;
+}).RequireAuthorization();
+
+app.Run();
+```
+
+When hosted on HTTPS, this route will be available on port 443 (for example, `https://your-site/healthcheck`).
+
+### Startup.cs (legacy hosting)
+
+```csharp
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddAuthentication("Bearer")
+            .AddJwtBearer("Bearer", options =>
+            {
+                options.Authority = "https://identity.example.com";
+                options.Audience = "my-api";
+            });
+
+        services.AddAuthorization();
+        services.AddTinyHealthCheck<BasicHealthCheck>();
+    }
+
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapTinyHealthCheck<BasicHealthCheck>("/healthcheck")
+                .RequireAuthorization();
+        });
+    }
+}
+```
+
 ## Advanced Usage
 
 Calling `AddCustomTinyHealthCheck` with a class that inheirits from IHealthCheck allows you to create whatever type of response you want.
